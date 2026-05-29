@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase, getUserId } from "./supabase.js";
 
-🗂️", color: "#90A4AE" },
+"🗂️", color: "#90A4AE" },
 ];
 
 function formatDuration(ms, short = false) {
