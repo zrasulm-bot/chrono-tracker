@@ -9,8 +9,9 @@ const CATEGORIES = [
   { id: "idle",    label: "Безделье",           emoji: "☁️", color: "#A0AEC0" },
   { id: "home",    label: "Дом",               emoji: "🔧", color: "#F7A35C" },
   { id: "self",    label: "Саморазвитие",       emoji: "📚", color: "#F06292" },
-  { id: "other",   label: "Прочее", emoji: "🗂️", color: "#90A4AE" },
   { id: "useful",  label: "Прочее полезное",    emoji: "✅", color: "#4DD0E1" },
+  { id: "other", label: "Прочее", emoji: "🗂️", color: "#90A4AE" },
+
 ];
 
 function formatDuration(ms, short = false) {
@@ -127,16 +128,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    clearInterval(intervalRef.current);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
     if (active) {
-      const tick = () => setElapsed(Date.now() - active.start);
-      tick();
-      intervalRef.current = setInterval(tick, 1000);
+      setElapsed(Date.now() - active.start);
+      intervalRef.current = setInterval(() => {
+        setElapsed(Date.now() - active.start);
+      }, 1000);
     } else {
       setElapsed(0);
     }
-    return () => clearInterval(intervalRef.current);
-  }, [active]);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [active?.category, active?.start]);
 
   const handleCategory = useCallback(async (catId) => {
     const now = Date.now();
