@@ -9,6 +9,7 @@ const CATEGORIES = [
   { id: "idle",    label: "Безделье",           emoji: "☁️", color: "#A0AEC0" },
   { id: "home",    label: "Дом",               emoji: "🔧", color: "#F7A35C" },
   { id: "self",    label: "Саморазвитие",       emoji: "📚", color: "#F06292" },
+  { id: "other",   label: "Прочее", emoji: "🗂️", color: "#90A4AE" },
   { id: "useful",  label: "Прочее полезное",    emoji: "✅", color: "#4DD0E1" },
 ];
 
