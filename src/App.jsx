@@ -7,7 +7,7 @@ const CATEGORIES = [
   { id: "family",  label: "Семья",           emoji: "🏠", color: "#F97B5C",  type: "useful"   },
   { id: "friends", label: "Друзья",          emoji: "👥", color: "#5CE8A4",  type: "ok"       },
   { id: "idle",    label: "Безделье",        emoji: "☁️", color: "#A0AEC0",  type: "wasteful" },
-  { id: "home",    label: "Дом",            emoji: "🔧", color: "#F7A35C",  type: "wasteful" },
+  { id: "home",    label: "Дом",            emoji: "🔧", color: "#F7A35C",  type: "ok" },
   { id: "self",    label: "Саморазвитие",    emoji: "📚", color: "#F06292",  type: "useful"   },
   { id: "useful",  label: "Прочее полезное", emoji: "✅", color: "#4DD0E1",  type: "useful"   },
   { id: "other",   label: "Прочее",          emoji: "🗂️", color: "#90A4AE",  type: "ok"       },
