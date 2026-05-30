@@ -2,15 +2,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase, getUserId } from "./supabase.js";
 
 const CATEGORIES = [
-  { id: "work",    label: "Работа",          emoji: "💼", color: "#E8C547",  type: "useful"   },
-  { id: "games",   label: "Игры",            emoji: "🎮", color: "#7C6AF7",  type: "wasteful" },
-  { id: "family",  label: "Семья",           emoji: "🏠", color: "#F97B5C",  type: "useful"   },
-  { id: "friends", label: "Друзья",          emoji: "👥", color: "#5CE8A4",  type: "ok"       },
-  { id: "idle",    label: "Безделье",        emoji: "☁️", color: "#A0AEC0",  type: "wasteful" },
-  { id: "home",    label: "Дом",            emoji: "🔧", color: "#F7A35C",  type: "ok" },
-  { id: "self",    label: "Саморазвитие",    emoji: "📚", color: "#F06292",  type: "useful"   },
-  { id: "useful",  label: "Прочее полезное", emoji: "✅", color: "#4DD0E1",  type: "useful"   },
-  { id: "other",   label: "Прочее",          emoji: "🗂️", color: "#90A4AE",  type: "ok"       },
+  { id: "work",    label: "Работа",          emoji: "💼", color: "#E8C547", type: "useful"   },
+  { id: "games",   label: "Игры",            emoji: "🎮", color: "#7C6AF7", type: "wasteful" },
+  { id: "family",  label: "Семья",           emoji: "🏠", color: "#F97B5C", type: "useful"   },
+  { id: "friends", label: "Друзья",          emoji: "👥", color: "#5CE8A4", type: "ok"       },
+  { id: "idle",    label: "Безделье",        emoji: "☁️", color: "#A0AEC0", type: "wasteful" },
+  { id: "home",    label: "Дом",             emoji: "🔧", color: "#F7A35C", type: "ok" },
+  { id: "self",    label: "Саморазвитие",    emoji: "📚", color: "#F06292", type: "useful"   },
+  { id: "useful",  label: "Прочее полезное", emoji: "✅", color: "#4DD0E1", type: "useful"   },
+  { id: "other",   label: "Прочее",          emoji: "📦", color: "#90A4AE", type: "ok"       },
 ];
 
 const TYPE_SCORE = { useful: 1, ok: 0, wasteful: -1 };
@@ -91,7 +91,7 @@ export default function App() {
   const [period, setPeriod]         = useState("day");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo]     = useState("");
-  const [analyticsText, setAnalyticsText]     = useState("");
+  const [analyticsText, setAnalyticsText]       = useState("");
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [loaded, setLoaded]         = useState(false);
   const [loadError, setLoadError]   = useState(false);
@@ -115,10 +115,37 @@ export default function App() {
         if (e1) console.error("sessions error:", e1);
         if (e2 && e2.code !== "PGRST116") console.error("active error:", e2);
 
-        setSessions(sess || []);
+        let finalSessions = sess || [];
+        let finalActive = null;
+
         if (act) {
-          setActive({ category: act.category, start: act.start_time });
-          setElapsed(Date.now() - act.start_time);
+          const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+          const midnight = todayStart.getTime();
+
+          if (act.start_time < midnight) {
+            const closedSession = {
+              user_id: userId,
+              category: act.category,
+              start_time: act.start_time,
+              end_time: midnight
+            };
+            await supabase.from("sessions").insert(closedSession);
+            await supabase.from("active_session").upsert({
+              user_id: userId,
+              category: act.category,
+              start_time: midnight
+            });
+            finalSessions = [...finalSessions, closedSession];
+            finalActive = { category: act.category, start: midnight };
+          } else {
+            finalActive = { category: act.category, start: act.start_time };
+          }
+        }
+
+        setSessions(finalSessions);
+        if (finalActive) {
+          setActive(finalActive);
+          setElapsed(Date.now() - finalActive.start);
         }
       } catch (err) {
         console.error("Load failed:", err);
@@ -131,37 +158,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (active) {
       setElapsed(Date.now() - active.start);
-      intervalRef.current = setInterval(() => {
-        setElapsed(Date.now() - active.start);
-      }, 1000);
+      intervalRef.current = setInterval(() => setElapsed(Date.now() - active.start), 1000);
     } else {
       setElapsed(0);
     }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
+    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
   }, [active?.category, active?.start]);
 
   const handleCategory = useCallback(async (catId) => {
     const now = Date.now();
     const prev = active;
-
     if (prev) {
       const newSession = { user_id: userId, category: prev.category, start_time: prev.start, end_time: now };
       await supabase.from("sessions").insert(newSession);
       setSessions(s => [...s, newSession]);
       await supabase.from("active_session").delete().eq("user_id", userId);
     }
-
     if (prev?.category === catId) {
       setActive(null);
     } else {
@@ -186,7 +201,7 @@ export default function App() {
   const grandTotal = Object.values(totals).reduce((a,b)=>a+b,0);
   const liveTotals = {...totals};
   if (active) liveTotals[active.category] = (liveTotals[active.category]||0) + elapsed;
-  const liveTotal = grandTotal + elapsed;
+  const liveTotal = grandTotal + (active ? elapsed : 0);
 
   async function runAnalytics() {
     setAnalyticsLoading(true); setAnalyticsText("");
@@ -271,6 +286,8 @@ export default function App() {
       </div>
 
       <div style={{maxWidth:560,margin:"0 auto",padding:"24px 16px"}}>
+
+        {/* TRACKER */}
         {view==="tracker" && (
           <div>
             <div style={{textAlign:"center",marginBottom:32}}>
@@ -310,16 +327,14 @@ export default function App() {
               })}
             </div>
 
-            {/* 24h coverage block */}
+            {/* Coverage block */}
             {(() => {
               const todayStart = new Date(); todayStart.setHours(0,0,0,0);
               const todayFrom = todayStart.getTime();
-              const todayTo = Date.now();
-              const todayTotals = aggregateSessions(sessions, todayFrom, todayTo);
+              const todayTotals = aggregateSessions(sessions, todayFrom, Date.now());
               let todayTrackedMs = Object.values(todayTotals).reduce((a,b)=>a+b,0);
-              // добавляем текущую активную сессию если она сегодня
               if (active && active.start >= todayFrom) todayTrackedMs += elapsed;
-              const msSinceStart = todayTo - todayFrom;
+              const msSinceStart = Date.now() - todayFrom;
               const trackedH = (todayTrackedMs / 3600000).toFixed(1);
               const totalH = (msSinceStart / 3600000).toFixed(1);
               const pct = Math.min(100, (todayTrackedMs / msSinceStart) * 100);
@@ -330,13 +345,12 @@ export default function App() {
                     <div style={{fontSize:10,color:"#404060",letterSpacing:".15em"}}>ПОКРЫТИЕ ДНЯ</div>
                     <div style={{fontSize:13,color:"#E8C547",fontWeight:500}}>{trackedH}ч <span style={{color:"#404060",fontSize:11}}>/ {totalH}ч прошло</span></div>
                   </div>
-                  {/* segmented bar */}
                   <div style={{height:10,background:"#1a1a3a",borderRadius:6,overflow:"hidden",marginBottom:10}}>
                     <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#E8C547,#5CE8A4)",borderRadius:6,transition:"width .6s"}}/>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#505070"}}>
                     <span>✅ зафиксировано {pct.toFixed(0)}%</span>
-                    <span>❓ не зафиксировано {formatDuration(untrackedMs, true)||"0с"}</span>
+                    <span>❓ не зафиксировано {formatDuration(untrackedMs,true)||"0с"}</span>
                   </div>
                 </div>
               );
@@ -363,6 +377,7 @@ export default function App() {
           </div>
         )}
 
+        {/* STATS */}
         {view==="stats" && (
           <div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
@@ -378,19 +393,15 @@ export default function App() {
               </div>
             )}
 
-            {/* Efficiency report */}
             {grandTotal > 0 && (() => {
               const byType = { useful: 0, ok: 0, wasteful: 0 };
               CATEGORIES.forEach(c => { byType[c.type] = (byType[c.type]||0) + (totals[c.id]||0); });
-              const usefulPct  = Math.round(byType.useful  / grandTotal * 100);
-              const okPct      = Math.round(byType.ok      / grandTotal * 100);
-              const wastePct   = Math.round(byType.wasteful / grandTotal * 100);
-              // efficiency score: weighted average per minute
-              const totalMin = grandTotal / 60000;
+              const usefulPct = Math.round(byType.useful  / grandTotal * 100);
+              const okPct     = Math.round(byType.ok      / grandTotal * 100);
+              const wastePct  = Math.round(byType.wasteful / grandTotal * 100);
+              const totalMin  = grandTotal / 60000;
               const score = totalMin > 0
-                ? ((byType.useful/60000)*1 + (byType.ok/60000)*0 + (byType.wasteful/60000)*(-1)) / totalMin
-                : 0;
-              const scorePct = Math.round((score + 1) / 2 * 100); // map -1..1 to 0..100
+                ? ((byType.useful/60000)*1 + (byType.wasteful/60000)*(-1)) / totalMin : 0;
               const scoreColor = score > 0.3 ? "#5CE8A4" : score > -0.3 ? "#E8C547" : "#F97B5C";
               return (
                 <div style={{background:"#12122a",border:"1px solid #1e1e3a",borderRadius:14,padding:18,marginBottom:12}}>
@@ -401,7 +412,6 @@ export default function App() {
                     <span style={{color:TYPE_COLOR.wasteful,fontWeight:600}}>{wastePct}% на бесполезное</span>{" "}
                     и <span style={{color:TYPE_COLOR.ok,fontWeight:600}}>{okPct}% на допустимое</span>.
                   </div>
-                  {/* type bars */}
                   {[["useful",usefulPct],["ok",okPct],["wasteful",wastePct]].map(([t,pct])=>(
                     <div key={t} style={{marginBottom:8}}>
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#606080",marginBottom:4}}>
@@ -412,7 +422,6 @@ export default function App() {
                       </div>
                     </div>
                   ))}
-                  {/* efficiency score */}
                   <div style={{marginTop:16,padding:"12px 14px",background:"#0d0d1a",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                     <div>
                       <div style={{fontSize:10,color:"#404060",letterSpacing:".12em",marginBottom:4}}>ИНДЕКС ЭФФЕКТИВНОСТИ</div>
@@ -426,7 +435,6 @@ export default function App() {
               );
             })()}
 
-            {/* Efficiency chart — last 7 days */}
             {(() => {
               const days = [];
               for (let i = 6; i >= 0; i--) {
@@ -448,7 +456,7 @@ export default function App() {
               const minS = Math.min(...days.map(d=>d.score));
               const maxS = Math.max(...days.map(d=>d.score));
               const range = maxS - minS || 1;
-              const H = 80, W_total = 100;
+              const H = 80;
               const pts = days.map((d,i) => {
                 const x = (i / 6) * 100;
                 const y = H - ((d.score - minS) / range) * (H - 10) - 5;
@@ -458,19 +466,10 @@ export default function App() {
                 <div style={{background:"#12122a",border:"1px solid #1e1e3a",borderRadius:14,padding:18,marginBottom:12}}>
                   <div style={{fontSize:10,color:"#404060",letterSpacing:".15em",marginBottom:14}}>ЭФФЕКТИВНОСТЬ — 7 ДНЕЙ</div>
                   <svg viewBox={`-4 0 108 ${H+20}`} style={{width:"100%",overflow:"visible"}}>
-                    {/* zero line */}
-                    {(() => { const z = H - ((0 - minS)/range)*(H-10) - 5; return (
+                    {(() => { const z = H - ((0-minS)/range)*(H-10) - 5; return (
                       <line x1="0" y1={z} x2="100" y2={z} stroke="#2a2a4a" strokeWidth="0.8" strokeDasharray="2,2"/>
                     );})()}
-                    {/* area fill */}
-                    <defs>
-                      <linearGradient id="effGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#5CE8A4" stopOpacity="0.25"/>
-                        <stop offset="100%" stopColor="#5CE8A4" stopOpacity="0"/>
-                      </linearGradient>
-                    </defs>
                     <polyline points={pts} fill="none" stroke="#5CE8A4" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
-                    {/* dots */}
                     {days.map((d,i) => {
                       const x = (i/6)*100;
                       const y = H - ((d.score-minS)/range)*(H-10) - 5;
@@ -492,7 +491,6 @@ export default function App() {
               );
             })()}
 
-            {/* Category list sorted by time desc */}
             <div style={{background:"#12122a",border:"1px solid #1e1e3a",borderRadius:14,padding:20,marginBottom:16}}>
               {grandTotal===0 ? (
                 <div style={{textAlign:"center",color:"#303050",padding:"30px 0",fontSize:13}}>Нет данных за выбранный период</div>
@@ -536,6 +534,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ANALYTICS */}
         {view==="analytics" && (
           <div>
             <div style={{marginBottom:20}}>
